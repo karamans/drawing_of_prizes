@@ -273,7 +273,8 @@ async def publish_post(target_message: Message, link: str, content_hash: str, is
         logger.error(f"Publish failed: {e}")
 
 
-@Client.on_message(filters.incoming)
+from pyrogram.handlers import MessageHandler
+
 async def source_monitor(client, message: Message):
     """This handler is attached to Master only."""
     # DEBUG LOGGING
@@ -376,7 +377,7 @@ async def main():
         master_app = clients[0]
         
     # Register handler only on Master
-    master_app.add_handler(source_monitor)
+    master_app.add_handler(MessageHandler(source_monitor, filters.incoming))
 
     # Start all clients nicely
     valid_clients = []
