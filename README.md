@@ -38,7 +38,7 @@
 
 1.  Скачайте код бота:
     ```bash
-    git clone https://github.com/ВАШ_НИК/ВАШ_РЕПОЗИТОРИЙ.git bot
+    git clone https://github.com/karamans/drawing_of_prizes.git bot
     ```
     *(Замените ссылку на вашу реальную ссылку на GitHub)*
 
