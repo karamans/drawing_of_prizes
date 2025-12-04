@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Environment variables
+.env
+
+# Data & Sessions
+data/
+*.session
+*.session-journal
+*.sqlite
+*.db
+
+# Logs
+*.log
+
+# Documentation (Internal)
+docs/
+
+# IDE
+.idea/
+.vscode/
+.cursor/
+
