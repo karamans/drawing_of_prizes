@@ -156,121 +156,59 @@ async def process_private_invite(client: Client, link: str) -> Optional[Message]
         logger.error(f"Error processing private invite {link}: {e}")
         return None
 
-async def publish_post(target_message: Message, link: str, content_hash: str, is_private_source: bool):
+async def publish_post(client: Client, target_message: Message, link: str, content_hash: str):
     """
-    Publishes the post using Master App.
-    If source was public -> Forward.
-    If source was private (fetched by worker) -> Copy.
+    Publishes the post using the client that found it.
+    Assumption: All clients are admins of TARGET_CHANNEL_ID.
     """
     try:
-        # If we can forward (public channel and Master has access), we prefer forward.
-        # If 'is_private_source' is True, it means a worker fetched it from a private channel 
-        # where Master might not be a member.
-        
-        if not is_private_source:
-            try:
-                await master_app.forward_messages(
-                    chat_id=TARGET_CHANNEL_ID,
-                    from_chat_id=target_message.chat.id,
-                    message_ids=target_message.id
-                )
-                logger.info(f"Forwarded post from {link}")
-                await add_post(link, content_hash)
-                return
-            except Exception as e:
-                logger.warning(f"Forward failed (maybe Master not in chat?), falling back to Copy: {e}")
-        
-        # Fallback: Copy (for private sources or failed forwards)
-        # Note: If target_message comes from a Worker client, Master cannot forward/copy it directly 
-        # using message_id because message_id is specific to that user's view? 
-        # No, message_id in channel is global.
-        # BUT Master must have access to the chat to Copy/Forward from it.
-        
-        # CRITICAL: If Worker joined a private channel, Master CANNOT copy/forward from it 
-        # unless Master is also in it.
-        # Since only Worker joined, Master cannot access `from_chat_id`.
-        
-        # Solution for Private Channels found by Workers:
-        # The Worker must download media and send it? Or Worker must Copy it to Master?
-        # Or we just accept that for private channels, we only support text/link forwarding if Master isn't in.
-        
-        # Workaround: Worker copies message to Target Channel?
-        # Problem: Worker is not Admin of Target Channel.
-        
-        # User Requirement: "Only Main account posts".
-        # This creates a deadlock for private channels where only Worker is member.
-        
-        # Option A: Worker copies message to Master (Saved Messages), Master copies to Channel.
-        # Option B: We make all Workers admins (User rejected this impliedly).
-        # Option C: We ignore private channel content copying and just send text/link.
-        
-        # Let's try Option A (Worker -> Master -> Channel).
-        
-        # 1. Worker copies to Master's username (or 'me' if it's same, but they are diff accounts).
-        # We need Master's username or ID.
-        master_me = await master_app.get_me()
-        
-        # Worker copies to Master
-        # Note: target_message is bound to the client that fetched it.
-        worker_client = target_message._client
-        
-        sent_to_master = None
+        # Try Forward first (best for attribution)
+        try:
+            await client.forward_messages(
+                chat_id=TARGET_CHANNEL_ID,
+                from_chat_id=target_message.chat.id,
+                message_ids=target_message.id
+            )
+            logger.info(f"[{client.name}] Forwarded post from {link}")
+            await add_post(link, content_hash)
+            return
+        except Exception as e:
+            logger.warning(f"[{client.name}] Forward failed, trying Copy: {e}")
+
+        # Fallback: Copy
         if target_message.media:
-             # Copy
-             sent_to_master = await worker_client.copy_message(
-                 chat_id=master_me.username or master_me.id,
+             await client.copy_message(
+                 chat_id=TARGET_CHANNEL_ID,
                  from_chat_id=target_message.chat.id,
                  message_id=target_message.id,
                  caption=target_message.caption
              )
         else:
-             # Text
-             sent_to_master = await worker_client.send_message(
-                 chat_id=master_me.username or master_me.id,
-                 text=target_message.text
-             )
-             
-        # 2. Master copies from Saved Messages to Channel
-        if sent_to_master:
-            # We need to wait a bit or fetch it?
-            # Master needs to receive it. 
-            # But we can't easily get the message object for Master without listening.
-            
-            # Alternative: Worker sends FILE (download/upload).
-            # This is heavy.
-            
-            # Let's assume for now that for Private channels we just send the Link and Text attribution
-            # because full content proxying between userbots is complex without a shared storage.
-            
-            # Wait, if we used `copy_message` above, it sends it to Master.
-            # Master can see it in his history with Worker?
-            pass
-            
-        # For now, to keep it simple and robust:
-        # If private source and Master not in it -> Send Text Summary + Link.
-        # If User really wants content, we need all bots to be admins or Master to join everything.
-        
-        # Let's try to have Master join if it's a public link, 
-        # but here we are in `is_private_source` block.
-        
-        logger.info(f"Posting content from private source {link} via Copy text")
-        
-        # Construct a rich text message
-        text = target_message.text or target_message.caption or ""
-        attribution = f"\n\n🔗 [Ссылка на пост]({link})"
-        
-        await master_app.send_message(
-             chat_id=TARGET_CHANNEL_ID,
-             text=text + attribution,
-             disable_web_page_preview=False
-        )
+             # Rich text copy
+             # Note: copy_message works for text too in recent Pyrogram versions, but let's be safe
+             # Actually copy_message is preferred as it keeps entities better.
+             try:
+                 await client.copy_message(
+                     chat_id=TARGET_CHANNEL_ID,
+                     from_chat_id=target_message.chat.id,
+                     message_id=target_message.id
+                 )
+             except:
+                 # Last resort: send_message
+                 await client.send_message(
+                     chat_id=TARGET_CHANNEL_ID,
+                     text=target_message.text or target_message.caption or "",
+                     disable_web_page_preview=False
+                 )
+
+        logger.info(f"[{client.name}] Copied post from {link}")
         await add_post(link, content_hash)
 
     except FloodWait as e:
-        logger.warning(f"FloodWait publishing: {e.value}s")
+        logger.warning(f"[{client.name}] FloodWait publishing: {e.value}s")
         await asyncio.sleep(e.value + 2)
     except Exception as e:
-        logger.error(f"Publish failed: {e}")
+        logger.error(f"[{client.name}] Publish failed: {e}")
 
 
 from pyrogram.handlers import MessageHandler
@@ -340,8 +278,8 @@ async def source_monitor(client, message: Message):
                 await add_post(link, content_hash)
                 continue
 
-            # Publish using Master
-            await publish_post(target_message, link, content_hash, is_private)
+            # Publish using the Worker that found it
+            await publish_post(worker, target_message, link, content_hash)
 
 async def main():
     global master_app, clients
