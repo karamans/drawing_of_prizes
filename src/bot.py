@@ -341,9 +341,11 @@ async def main():
         client = Client(
             os.path.join(DATA_DIR, name),
             api_id=API_ID,
-            api_hash=API_HASH,
-            name=name
+            api_hash=API_HASH
         )
+        # Manually set name attribute for logging purposes if needed, 
+        # though Pyrogram sets it to session_name usually.
+        client.name = name 
         clients.append(client)
         
         # Assume the session matching SESSION_NAME in env is master, or first one
