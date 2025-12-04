@@ -355,7 +355,8 @@ async def main():
     if not master_app:
         master_app = clients[0]
         
-    logger.info(f"Master client is: {master_app.name}")
+    logger.info(f"Master client is: {master_app.name} (ID: {(await master_app.get_me()).id})")
+    logger.info(f"Listening for messages from: {SOURCE_CHAT}")
     
     # Register handler only on Master
     master_app.add_handler(source_monitor)
