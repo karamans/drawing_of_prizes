@@ -4,7 +4,9 @@ import glob
 from pyrogram import Client
 from src.config import API_ID, API_HASH
 
-DATA_DIR = "data"
+# Ensure absolute path
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
 
 async def main():
     print("=== Telegram Multi-Account Manager ===")
