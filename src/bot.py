@@ -273,10 +273,30 @@ async def publish_post(target_message: Message, link: str, content_hash: str, is
         logger.error(f"Publish failed: {e}")
 
 
-@Client.on_message(filters.chat(SOURCE_CHAT) & filters.incoming)
+@Client.on_message(filters.incoming)
 async def source_monitor(client, message: Message):
     """This handler is attached to Master only."""
-    logger.info(f"New message from {SOURCE_CHAT}: {message.id}")
+    # DEBUG LOGGING
+    chat_info = f"{message.chat.id}"
+    if message.chat.username:
+        chat_info += f" (@{message.chat.username})"
+    if message.chat.title:
+        chat_info += f" title='{message.chat.title}'"
+        
+    logger.info(f"DEBUG: Received message from {chat_info} | Text len: {len(message.text or message.caption or '')}")
+    
+    # Check if it matches source (try both ID and Username matching manually)
+    is_source = False
+    if str(message.chat.id) == str(SOURCE_CHAT):
+        is_source = True
+    elif message.chat.username and message.chat.username.lower() == str(SOURCE_CHAT).lower().replace("@", ""):
+        is_source = True
+        
+    if not is_source:
+        # logger.info(f"Ignoring message from {chat_info} (not source)")
+        return
+
+    logger.info(f"MATCH! Processing message from {SOURCE_CHAT}: {message.id}")
     
     text = message.text or message.caption or ""
     links = extract_links(text, message.entities)
@@ -358,15 +378,49 @@ async def main():
     # Register handler only on Master
     master_app.add_handler(source_monitor)
 
-    # Start all clients
-    await asyncio.gather(*[c.start() for c in clients])
+    # Start all clients nicely
+    valid_clients = []
+    for client in clients:
+        try:
+            await client.start()
+            valid_clients.append(client)
+            logger.info(f"Started client: {client.name}")
+        except Exception as e:
+            logger.error(f"Failed to start client {client.name}: {e}")
+            # If master failed, we have a problem unless we can reassign master
+            if client == master_app:
+                logger.critical("Master client failed to start!")
     
-    logger.info(f"Master client is: {master_app.name} (ID: {(await master_app.get_me()).id})")
+    clients = valid_clients
+    
+    if not clients:
+        logger.critical("No clients started successfully. Exiting.")
+        return
+
+    # Re-check master
+    if not master_app.is_connected:
+         # Try to find another master?
+         # If master failed, we can't listen.
+         # Unless we assign new master from valid_clients
+         if valid_clients:
+             master_app = valid_clients[0]
+             logger.warning(f"Original master failed. New master is: {master_app.name}")
+             # Re-register handler
+             master_app.add_handler(source_monitor)
+         else:
+             return
+
+    try:
+        me = await master_app.get_me()
+        logger.info(f"Master client is: {master_app.name} (ID: {me.id})")
+    except Exception as e:
+        logger.error(f"Failed to get master info: {e}")
+
     logger.info(f"Listening for messages from: {SOURCE_CHAT}")
     
-    logger.info("All clients started. Listening...")
+    logger.info(f"Total {len(clients)} clients running. Listening...")
     
-    # Start Janitor (can run on all clients or just workers? Better all)
+    # Start Janitor
     for c in clients:
         asyncio.create_task(janitor_task(c))
     
@@ -374,7 +428,7 @@ async def main():
     await idle()
     
     # Stop all
-    await asyncio.gather(*[c.stop() for c in clients])
+    await asyncio.gather(*[c.stop() for c in clients if c.is_connected])
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
