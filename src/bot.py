@@ -293,7 +293,7 @@ async def source_monitor(client, message: Message):
         is_source = True
         
     if not is_source:
-        # logger.info(f"Ignoring message from {chat_info} (not source)")
+        logger.info(f"IGNORING message from {chat_info} (Not {SOURCE_CHAT})")
         return
 
     logger.info(f"MATCH! Processing message from {SOURCE_CHAT}: {message.id}")
