@@ -33,17 +33,17 @@ if [ "$CMD" == "auth" ]; then
     # Run a temporary container interactively just for auth
     # We mount data/ so sessions persist
     # We mount .env so auth.py can read config
-    docker-compose run --rm --entrypoint "python auth.py" bot
+    docker compose run --rm --entrypoint "python auth.py" bot
     
 elif [ "$CMD" == "logs" ]; then
-    docker-compose logs -f
+    docker compose logs -f
 
 elif [ "$CMD" == "stop" ]; then
-    docker-compose down
+    docker compose down
 
 else
     echo "Deploying bot in background..."
-    docker-compose up -d --build
+    docker compose up -d --build
     echo "Deployment successful!"
     echo "Use './deploy.sh logs' to see logs."
     echo "Use './deploy.sh auth' to manage accounts."
