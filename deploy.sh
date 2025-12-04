@@ -12,7 +12,13 @@ check_env() {
 # Function to check Docker
 check_docker() {
     if ! command -v docker &> /dev/null; then
-        echo "Docker not found. Please install Docker first."
+        echo "❌ Docker not found!"
+        echo "Please install Docker by running the following commands:"
+        echo ""
+        echo "curl -fsSL https://get.docker.com -o get-docker.sh"
+        echo "sudo sh get-docker.sh"
+        echo ""
+        echo "After installation, run this script again."
         exit 1
     fi
 }
